@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jiggle Prototype v2 — Default → Quick Action → Jiggle</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; }
+  body {
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background:#1c1e26; color:#e8eaf0; min-height:100vh;
+    display:flex; align-items:center; justify-content:center; gap:48px; padding:32px;
+  }
+  .phone {
+    width:414px; height:896px; border-radius:48px; overflow:hidden; position:relative; flex:0 0 auto;
+    box-shadow:0 0 0 12px #0b0c10, 0 24px 80px rgba(0,0,0,.6);
+    background:
+      radial-gradient(120% 80% at 85% 5%, #c3d5ea 0%, rgba(195,213,234,0) 55%),
+      radial-gradient(140% 90% at 10% 30%, #b9cfe6 0%, rgba(185,207,230,0) 60%),
+      radial-gradient(150% 100% at 70% 75%, #9fb9d8 0%, rgba(159,185,216,0) 65%),
+      linear-gradient(175deg, #c2d3e7 0%, #b4c9e0 35%, #a3bcd8 60%, #b7c6da 100%);
+    touch-action:none;
+  }
+  .statusbar {
+    position:absolute; top:0; left:0; right:0; height:54px; z-index:70;
+    display:flex; align-items:center; justify-content:space-between; padding:0 26px 0 32px;
+    color:#000;
+  }
+  .sb-time { font-size:17px; font-weight:600; letter-spacing:.02em; font-variant-numeric:tabular-nums; min-width:54px; }
+  .notch { position:absolute; top:12px; left:50%; transform:translateX(-50%); width:124px; height:34px; background:#000; border-radius:20px; }
+  .sb-right { display:flex; align-items:center; gap:7px; }
+
+  /* top bars */
+  .topbar { position:absolute; top:60px; left:0; right:0; padding:0 24px; z-index:70;
+    display:flex; align-items:center; justify-content:space-between;
+    transition:opacity .25s ease, transform .25s ease; }
+  .title-default { font-size:32px; font-weight:700; color:#000; line-height:40px; }
+  .nav-icons { display:flex; align-items:center; gap:16px; }
+  .nav-icons .ic { width:40px; height:40px; cursor:pointer; background:none; border:none; padding:0;
+    display:flex; align-items:center; justify-content:center; }
+  .nav-icons .ic svg { width:40px; height:40px; }
+  .avatar { width:40px; height:40px; border-radius:20px; background:#d9e8ff; color:#003382;
+    font-size:20px; font-weight:400; display:flex; align-items:center; justify-content:center;
+    flex:0 0 40px; box-shadow:0 1px 4px rgba(20,40,80,.14); }
+  .pagedots { position:absolute; top:112px; left:24px; z-index:70; display:flex; gap:5px; align-items:center;
+    transition:opacity .25s ease, transform .25s ease; }
+  .pagedots .bar { width:22px; height:6px; border-radius:3px; background:rgba(60,80,110,.45); }
+  .pagedots .dot { width:6px; height:6px; border-radius:3px; background:rgba(60,80,110,.3); }
+  .pill {
+    background:rgba(255,255,255,.55); backdrop-filter:blur(10px);
+    border:none; border-radius:22px; height:44px; padding:0 22px;
+    font-size:16px; font-weight:600; color:#0064FF; cursor:pointer;
+  }
+  .hidden { opacity:0 !important; pointer-events:none !important; }
+  /* header transition: default bar fades up, pills spring in with stagger */
+  #bar-default.hidden, .pagedots.hidden { transform:translateY(-10px) scale(.97); }
+  #bar-customize { transition:none; }
+  #bar-customize.hidden { opacity:1 !important; }
+  #bar-customize .pill {
+    transition:opacity .32s cubic-bezier(.34,1.45,.64,1), transform .32s cubic-bezier(.34,1.45,.64,1);
+  }
+  #bar-customize .pill:nth-child(1) { transition-delay:.08s; }
+  #bar-customize .pill:nth-child(2) { transition-delay:.16s; }
+  #bar-customize.hidden .pill { opacity:0; transform:translateY(-8px) scale(.9); transition-delay:0s; transition-duration:.18s; }
+
+  /* widgets */
+  .widget-area { position:absolute; top:172px; left:0; right:0; bottom:0; }
+  /* dialog pop up background (from Figma: Dialog Pop up, #000 70%) */
+  .scrim { position:absolute; inset:0; z-index:72; background:#000; opacity:0;
+    pointer-events:none; transition:opacity .22s ease; }
+  .scrim.show { opacity:var(--scrimOp,.7); pointer-events:auto; }
+  .widget { position:absolute; left:24px; width:366px;
+    transition: top .3s cubic-bezier(.3,.9,.35,1), opacity .3s, filter .3s; cursor:grab; }
+  .tbox { width:100%; height:100%; }
+  .rbox { width:100%; height:100%; position:relative; border-radius:20px;
+    background:#fff; box-shadow:0 4px 14px rgba(30,50,90,.10);
+    transition: box-shadow var(--liftDur,.15s), transform var(--liftDur,.15s); }
+  .slot { position:absolute; inset:16px; border:1.5px dashed #a54ddb; border-radius:6px;
+    background:#faf7fe; display:flex; align-items:center; justify-content:center;
+    font-size:14px; color:#8a30c9; pointer-events:none; }
+  /* jiggle: rotation + translation, different periods = organic motion */
+  @keyframes jr { from { transform:rotate(var(--nA)); } to { transform:rotate(var(--pA)); } }
+  @keyframes jt { from { transform:translate(var(--nT), var(--nTy)); } to { transform:translate(var(--pT), var(--pTy)); } }
+  .mode-jiggle .widget.jiggles .rbox { animation:jr var(--cycR) ease-in-out infinite alternate; animation-delay:var(--phR); }
+  .mode-jiggle .widget.jiggles .tbox { animation:jt var(--cycT) ease-in-out infinite alternate; animation-delay:var(--phT); }
+  .reduce-motion .rbox, .reduce-motion .tbox { animation:none !important; }
+  /* lift (press) + held: floats above the dialog scrim */
+  .widget.lift { z-index:75; }
+  .widget.lift .rbox { transform:scale(var(--liftScale,1.05)); box-shadow:0 18px 44px rgba(10,25,60,.35); }
+  .widget.lift .tbox, .widget.lift .rbox { animation:none !important; }
+  .widget.held { transition:none; z-index:75; cursor:grabbing; }
+  /* delete badge */
+  .badge { position:absolute; top:-10px; left:-10px; width:26px; height:26px; z-index:20;
+    background:#e5484d; border-radius:50%; border:none; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; transform:scale(.8); transition:opacity .2s, transform .2s; pointer-events:none; }
+  .badge::before { content:""; position:absolute; inset:-9px; }
+  .badge::after { content:""; width:11px; height:2px; background:#fff; border-radius:1px; }
+  .mode-jiggle .badge.show { opacity:1; transform:scale(1); pointer-events:auto; }
+  .holding-any .badge { opacity:0 !important; }
+
+  /* quick action menu */
+  .qmenu { position:absolute; left:24px; width:264px; z-index:80;
+    background:#fff; border-radius:18px; box-shadow:0 16px 48px rgba(10,25,60,.28);
+    opacity:0; transform:scale(.85); transform-origin:top left; pointer-events:none;
+    transition:opacity .18s, transform .18s; }
+  .qmenu.show { opacity:1; transform:scale(1); pointer-events:auto; }
+  .qmenu .sizes { display:flex; gap:16px; padding:14px 18px; border-bottom:1px solid #ececf0; align-items:center; }
+  .qmenu .sz { width:26px; height:20px; border:2px solid #333; border-radius:4px; cursor:pointer; position:relative; }
+  .qmenu .sz.s1 { width:16px; height:9px; }
+  .qmenu .sz.s2 { width:26px; height:9px; border-radius:5px; }
+  .qmenu .sz.s3 { width:14px; height:18px; }
+  .qmenu .sz.s4 { width:24px; height:14px; }
+  .qmenu .sz.sel { border-color:#0064FF; box-shadow:0 0 0 2px rgba(22,103,217,.25); }
+  .qmenu .item { display:flex; align-items:center; justify-content:space-between;
+    padding:15px 18px; font-size:16.5px; color:#111; cursor:pointer; border-bottom:1px solid #ececf0; }
+  .qmenu .item:last-child { border-bottom:none; }
+  .qmenu .item:active { background:#f3f4f7; }
+  .qmenu .item.danger { color:#e5484d; }
+  .qmenu .item .mi { font-size:16px; opacity:.85; }
+
+  /* add button + tabbar */
+  .addbtn { position:absolute; left:187px; width:40px; height:40px; border-radius:20px; border:none;
+    background:rgba(255,255,255,.7); backdrop-filter:blur(8px); color:#0064FF; font-size:22px;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+    opacity:0; transform:scale(.8); pointer-events:none;
+    transition:opacity .25s, transform .25s, top .3s cubic-bezier(.3,.9,.35,1); z-index:15; }
+  .mode-jiggle .addbtn { opacity:1; transform:scale(1); pointer-events:auto; transition-delay:.15s, .15s, 0s; }
+  .tabbar { position:absolute; left:24px; right:24px; bottom:0; height:90px; z-index:50;
+    background:#fff; border-radius:20px 20px 0 0;
+    box-shadow:0 0 30px rgba(0,0,0,.10);
+    display:flex; justify-content:space-around; align-items:flex-start; padding:16px 8px 0;
+    transition:opacity .3s ease; }
+  .mode-jiggle .tabbar { opacity:0; pointer-events:none; }
+  .tab { width:81px; display:flex; flex-direction:column; align-items:center; gap:4px;
+    font-size:16px; line-height:22px; color:#78787d; font-weight:400; }
+  .tab svg { width:24px; height:24px; }
+  .homebar { position:absolute; bottom:8px; left:50%; transform:translateX(-50%); width:140px; height:5px; border-radius:3px; background:rgba(0,0,0,.85); z-index:80; }
+
+  .statebadge { position:absolute; top:18px; left:50%; transform:translateX(-50%); z-index:90;
+    background:rgba(0,0,0,.75); color:#fff; font-size:11px; padding:3px 10px; border-radius:10px; letter-spacing:.05em; }
+
+  /* panel */
+  .panel { width:360px; flex:0 0 auto; }
+  .panel h1 { font-size:20px; margin-bottom:4px; }
+  .panel .sub { font-size:13px; color:#9aa2b5; margin-bottom:16px; }
+  .group { background:#262a36; border-radius:14px; padding:14px 16px; margin-bottom:12px; }
+  .group h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; color:#8f98ac; margin-bottom:10px; }
+  .row { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:10px; }
+  .row:last-child { margin-bottom:0; }
+  .row label { font-size:13.5px; white-space:nowrap; }
+  .row output { font-size:12.5px; color:#7fb0ff; min-width:62px; text-align:right; font-variant-numeric:tabular-nums; }
+  input[type=range] { flex:1; accent-color:#4a8dff; }
+  .toggle { display:flex; align-items:center; gap:8px; font-size:13.5px; cursor:pointer; }
+  .btnrow { display:flex; gap:10px; margin-bottom:12px; }
+  .btn { flex:1; padding:10px; border-radius:10px; border:none; cursor:pointer;
+    background:#333a4c; color:#e8eaf0; font-size:13.5px; font-weight:600; }
+  .btn.primary { background:#1e5fd6; }
+  .note { font-size:12px; color:#8f98ac; line-height:1.55; }
+  .note b { color:#c3cad9; }
+</style>
+</head>
+<body>
+
+<div class="phone" id="phone">
+  <div class="statebadge" id="statebadge">DEFAULT</div>
+  <div class="statusbar"><span class="sb-time">9:41</span><div class="notch"></div><span class="sb-right">
+    <!-- cellular -->
+    <svg width="19" height="12" viewBox="0 0 19 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0"  y="8"   width="3.4" height="4"  rx="1" fill="#000"/>
+      <rect x="5"  y="5.5" width="3.4" height="6.5" rx="1" fill="#000"/>
+      <rect x="10" y="3"   width="3.4" height="9"  rx="1" fill="#000"/>
+      <rect x="15" y="0.5" width="3.4" height="11.5" rx="1" fill="#000"/>
+    </svg>
+    <!-- wifi -->
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8.5 2.2C11.1 2.2 13.5 3.2 15.3 4.9C15.5 5.1 15.8 5.1 16 4.9L16.9 4C17.1 3.8 17.1 3.5 16.9 3.3C14.7 1.2 11.7 0 8.5 0C5.3 0 2.3 1.2 0.1 3.3C-0.1 3.5 -0.1 3.8 0.1 4L1 4.9C1.2 5.1 1.5 5.1 1.7 4.9C3.5 3.2 5.9 2.2 8.5 2.2Z" fill="#000"/>
+      <path d="M8.5 6.2C9.9 6.2 11.2 6.7 12.2 7.6C12.4 7.8 12.7 7.8 12.9 7.6L13.8 6.7C14 6.5 14 6.2 13.8 6C12.4 4.7 10.5 4 8.5 4C6.5 4 4.6 4.7 3.2 6C3 6.2 3 6.5 3.2 6.7L4.1 7.6C4.3 7.8 4.6 7.8 4.8 7.6C5.8 6.7 7.1 6.2 8.5 6.2Z" fill="#000"/>
+      <path d="M10.7 9.4C10.9 9.2 10.9 8.9 10.7 8.7C10.1 8.2 9.3 7.9 8.5 7.9C7.7 7.9 6.9 8.2 6.3 8.7C6.1 8.9 6.1 9.2 6.3 9.4L8.1 11.2C8.3 11.4 8.7 11.4 8.9 11.2L10.7 9.4Z" fill="#000"/>
+    </svg>
+    <!-- battery -->
+    <svg width="28" height="13" viewBox="0 0 28 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0.5" y="0.5" width="24" height="12" rx="3.8" stroke="#000" stroke-opacity="0.35"/>
+      <path d="M26 4.5V8.5C26.8 8.2 27.3 7.4 27.3 6.5C27.3 5.6 26.8 4.8 26 4.5Z" fill="#000" fill-opacity="0.4"/>
+      <rect x="2" y="2" width="21" height="9" rx="2.5" fill="#000"/>
+    </svg>
+  </span></div>
+
+  <div class="topbar" id="bar-default">
+    <span class="title-default">Control</span>
+    <div class="nav-icons">
+      <button class="ic" id="btn-edit" title="Edit">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24.0977 11.1C25.4448 9.83266 27.5152 9.83247 28.8623 11.1L28.8721 11.1088L28.8809 11.1185C30.1726 12.4104 30.1725 14.5688 28.8809 15.8607L16.9414 27.8002L16.7998 27.9408L16.6113 28.0052L11.2715 29.805L9.64648 30.3529L10.1943 28.7279L11.9941 23.3881L12.0576 23.2006L12.1973 23.0599L24.0771 11.1195L24.0869 11.1097L24.0977 11.1ZM12.3525 27.6459L15.7109 26.5131L13.4844 24.2855L12.3525 27.6459ZM14.627 23.0257L16.9688 25.3666L25.3672 16.9691L23.0049 14.6058L14.627 23.0257ZM27.6846 12.3275C26.9919 11.6872 25.9513 11.6906 25.2627 12.3382L24.2031 13.4017L26.5693 15.767L27.6787 14.6586C28.3043 14.0326 28.3061 12.9564 27.6846 12.3275Z" fill="#0064FF"/></svg>
+      </button>
+      <span class="ic">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30.2006 25.9996C28.7434 25.9996 27.6291 24.971 27.372 23.5996L26.0006 14.771C25.4863 11.8567 23.0006 9.71387 20.0006 9.71387C17.0006 9.71387 14.5148 11.8567 14.0006 14.771L12.6291 23.5996C12.4577 24.971 11.2577 25.9996 9.80056 25.9996H9.71484V27.7139H19.1434V30.2853H20.8577V27.7139H30.2863V25.9996H30.2006ZM14.3434 23.8567L15.7148 15.0282C16.0577 12.971 17.8577 11.4282 20.0006 11.4282C22.1434 11.4282 23.9434 12.971 24.2863 15.0282L25.6577 23.8567C25.7434 24.6282 26.0863 25.3996 26.6006 25.9996H13.4006C13.9148 25.3996 14.172 24.7139 14.3434 23.8567Z" fill="#0064FF"/></svg>
+      </span>
+      <span class="avatar">AS</span>
+    </div>
+  </div>
+  <div class="pagedots" id="pagedots"><span class="bar"></span><span class="dot"></span><span class="dot"></span></div>
+
+  <div class="topbar hidden" id="bar-customize">
+    <button class="pill" id="btn-add">Add Widget ＋</button>
+    <button class="pill" id="btn-done">Done</button>
+  </div>
+
+  <div class="scrim" id="scrim"></div>
+  <div class="widget-area" id="area"></div>
+
+  <div class="qmenu" id="qmenu">
+    <div class="sizes">
+      <span class="sz s1"></span><span class="sz s2"></span><span class="sz s3"></span><span class="sz s4"></span><span class="sz sel"></span>
+    </div>
+    <div class="item" id="qm-repos">Re-position <span class="mi">⇅</span></div>
+    <div class="item" id="qm-edit">Edit Stack <span class="mi">✎</span></div>
+    <div class="item danger" id="qm-del">Delete Widget <span class="mi">⊖</span></div>
+  </div>
+
+  <button class="addbtn" id="addbtn">＋</button>
+
+  <div class="tabbar" id="tabbar">
+    <div class="tab">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 6.84961H6C4.81259 6.84961 3.84961 7.81259 3.84961 9V15.2803C3.84974 16.4676 4.81267 17.4297 6 17.4297H9.10254L9.35059 17.6787L12 20.3281L14.8984 17.4297H18C19.1873 17.4297 20.1503 16.4676 20.1504 15.2803V10H21.8496V15.2803C21.8495 17.4065 20.1262 19.1299 18 19.1299H15.6025L12.6006 22.1309L12 22.7324L11.3994 22.1309L8.39844 19.1299H6C3.87379 19.1299 2.15052 17.4065 2.15039 15.2803V9C2.15039 6.8737 3.8737 5.15039 6 5.15039H10V6.84961Z" fill="#0064FF"/><path d="M17 1.5L18.3364 4.66357L21.5 6L18.3364 7.33643L17 10.5L15.6636 7.33643L12.5 6L15.6636 4.66357L17 1.5Z" stroke="#0064FF" stroke-width="1.6" stroke-linejoin="bevel"/><path d="M12 9.25L13.2374 11.5126L15.5 12.75L13.2374 13.9874L12 16.25L10.7626 13.9874L8.5 12.75L10.7626 11.5126L12 9.25Z" fill="#0064FF"/></svg>
+      Chat</div>
+    <div class="tab">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21.2986 7.32227V17.6557C21.2986 18.4709 20.6377 19.1319 19.8224 19.1319H6.04456C5.22928 19.1319 4.56836 18.4709 4.56836 17.6557V15.8748" stroke="#0064FF" stroke-width="1.6"/><path d="M19.0488 4.7998C20.513 4.7998 21.5965 6.1623 21.2666 7.58887L19.6738 14.4775C19.4351 15.5098 18.5156 16.2412 17.4561 16.2412H4.55566C3.09159 16.2412 2.00821 14.8786 2.33789 13.4521L3.93066 6.5625C4.16948 5.53051 5.08917 4.79998 6.14844 4.7998H19.0488Z" stroke="#0064FF" stroke-width="1.6"/><path d="M17.7132 9.04492H10.9648V10.6449H17.7132V9.04492Z" fill="#0064FF"/><path d="M17.7136 11.8262H12.6523V13.4262H17.7136V11.8262Z" fill="#0064FF"/></svg>
+      Accounts</div>
+    <div class="tab">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.2861 6.85645C6.51477 6.85652 3.42872 9.94249 3.42871 13.7139C3.42871 17.4852 6.51477 20.5712 10.2861 20.5713C14.0576 20.5713 17.1436 17.4853 17.1436 13.7139H18.8574C18.8574 18.4282 15.0004 22.2852 10.2861 22.2852C5.57191 22.2851 1.71484 18.4281 1.71484 13.7139C1.71485 8.99964 5.57192 5.14265 10.2861 5.14258V6.85645ZM12.8574 1.71387C18.086 1.71387 22.2861 5.91401 22.2861 11.1426V12H12.001V1.71387H12.8574ZM13.7148 10.2852H20.4863C20.0577 6.68522 17.2291 3.85652 13.7148 3.51367V10.2852Z" fill="#0064FF"/></svg>
+      Planning</div>
+    <div class="tab">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 12.001C8.82857 12.001 11.1436 14.315 11.1436 17.1436C11.1434 19.972 8.8285 22.2861 6 22.2861C3.17163 22.286 0.857536 19.9719 0.857422 17.1436C0.857422 14.3151 3.17156 12.0011 6 12.001ZM18 12.001C20.8286 12.001 23.1436 14.315 23.1436 17.1436C23.1434 19.972 20.8285 22.2861 18 22.2861C15.1716 22.286 12.8575 19.9719 12.8574 17.1436C12.8574 14.3151 15.1716 12.0011 18 12.001ZM6 13.7148C4.11441 13.715 2.57129 15.2579 2.57129 17.1436C2.5714 19.0291 4.11448 20.5721 6 20.5723C7.88564 20.5723 9.4286 19.0292 9.42871 17.1436C9.42871 15.2578 7.88571 13.7148 6 13.7148ZM18 13.7148C16.1144 13.715 14.5713 15.2579 14.5713 17.1436C14.5714 19.0291 16.1145 20.5721 18 20.5723C19.8856 20.5723 21.4286 19.0292 21.4287 17.1436C21.4287 15.2578 19.8857 13.7148 18 13.7148ZM12 1.71484C14.8285 1.71484 17.1434 4.02898 17.1436 6.85742C17.1436 9.68599 14.8286 12.001 12 12.001C9.17156 12.0008 6.85742 9.6859 6.85742 6.85742C6.85757 4.02907 9.17165 1.715 12 1.71484ZM12 3.42871C10.1145 3.42886 8.57144 4.97193 8.57129 6.85742C8.57129 8.74304 10.1144 10.286 12 10.2861C13.8857 10.2861 15.4287 8.74314 15.4287 6.85742C15.4286 4.97183 13.8856 3.42871 12 3.42871Z" fill="#0064FF"/></svg>
+      Services</div>
+  </div>
+  <div class="homebar"></div>
+</div>
+
+<div class="panel">
+  <h1>Jiggle Prototype v2</h1>
+  <div class="sub">Default → press &amp; hold → Quick Action → keep holding → Jiggle</div>
+
+  <div class="group">
+    <h2>Press &amp; hold timing</h2>
+    <div class="row"><label>Hold → Quick Action</label><input type="range" id="holdMenu" min="150" max="1500" step="50" value="500"><output id="holdMenuO">0.50 s</output></div>
+    <div class="row"><label>Keep holding → Jiggle</label><input type="range" id="holdJiggle" min="300" max="2500" step="100" value="1200"><output id="holdJiggleO">+1.20 s</output></div>
+  </div>
+
+  <div class="group">
+    <h2>Lift (on press)</h2>
+    <div class="row"><label>Lift scale</label><input type="range" id="liftScale" min="1" max="1.15" step="0.01" value="1.05"><output id="liftScaleO">1.05×</output></div>
+    <div class="row"><label>Lift duration</label><input type="range" id="liftDur" min="0.05" max="0.5" step="0.05" value="0.15"><output id="liftDurO">0.15 s</output></div>
+    <div class="row"><label>Pop up scrim opacity</label><input type="range" id="dim" min="0.1" max="0.9" step="0.05" value="0.7"><output id="dimO">70%</output></div>
+  </div>
+
+  <div class="group">
+    <h2>Jiggle motion (measured from iOS video)</h2>
+    <div class="row"><label>Rotation</label><input type="range" id="rot" min="0" max="3" step="0.1" value="0.7"><output id="rotO">±0.7°</output></div>
+    <div class="row"><label>Rotation cycle</label><input type="range" id="cyc" min="0.1" max="1" step="0.05" value="0.25"><output id="cycO">0.25 s</output></div>
+    <div class="row"><label>Translation</label><input type="range" id="amp" min="0" max="4" step="0.25" value="1"><output id="ampO">±1.0 px</output></div>
+    <div class="row"><label>Translation cycle ×</label><input type="range" id="cycMult" min="1" max="2.2" step="0.05" value="1.4"><output id="cycMultO">1.40×</output></div>
+    <div class="row"><label class="toggle"><input type="checkbox" id="reduceMotion"> Reduce Motion</label></div>
+  </div>
+
+  <div class="btnrow">
+    <button class="btn primary" id="btn-toggle">Enter Jiggle</button>
+    <button class="btn" id="btn-reset">Reset</button>
+  </div>
+
+  <div class="note">
+    <b>Measured from your recording:</b> rotation <b>±0.5–0.8°</b>, cycle <b>≈0.26 s</b>, plus translation <b>≈±1 px</b> on both axes with a different period — that mix is why it looks smoother than corner-to-corner rotation. Entry: press → lift immediately, Quick Action menu <b>≈0.5 s</b>, keep holding <b>≈1.2 s</b> more → jiggle mode with menu fading out.<br><br>
+    <b>Try:</b> press &amp; hold widget → menu → keep holding → jiggle · release during menu → tap Re-position / Delete / outside · drag to reorder in jiggle · Done to exit. No resize in this prototype.
+  </div>
+</div>
+
+<script>
+(function(){
+  const GAP = 16;
+  let widgets = [
+    {id:'w1', h:84,  deletable:false},
+    {id:'w2', h:184, deletable:false},
+    {id:'w3', h:84,  deletable:false},
+    {id:'w4', h:184, deletable:true},
+  ];
+  const area = document.getElementById('area');
+  const phone = document.getElementById('phone');
+  const qmenu = document.getElementById('qmenu');
+  const badgeState = document.getElementById('statebadge');
+  const cfg = { holdMenu:500, holdJiggle:1200, liftScale:1.05, liftDur:0.15, dim:0.7,
+                rot:0.7, cyc:0.25, amp:1.0, cycMult:1.4 };
+  let mode = 'default';   // default | qa | jiggle
+  let held = null, qaTarget = null;
+
+  function setState(s){ badgeState.textContent = s.toUpperCase(); }
+
+  function build(){
+    area.innerHTML = '';
+    widgets.forEach(w => {
+      const el = document.createElement('div');
+      el.className = 'widget jiggles';
+      el.id = w.id;
+      el.style.height = w.h + 'px';
+      el.innerHTML = '<div class="tbox"><div class="rbox"><div class="slot">Instance Slot</div>' +
+        (w.deletable ? '<button class="badge" aria-label="Delete"></button>' : '') + '</div></div>';
+      if (w.deletable){
+        const b = el.querySelector('.badge');
+        b.addEventListener('pointerdown', e => e.stopPropagation());
+        b.addEventListener('click', e => { e.stopPropagation(); removeWidget(w.id); });
+      }
+      el.addEventListener('pointerdown', e => onDown(e, w.id));
+      area.appendChild(el);
+      w.el = el;
+    });
+    applyCfg(); layout(true); syncBadges();
+  }
+
+  function layout(instant){
+    let y = 0;
+    widgets.forEach(w => {
+      if (!held || w.el !== held.el){
+        if (instant) w.el.style.transition = 'none';
+        w.el.style.top = y + 'px';
+        if (instant) requestAnimationFrame(()=> w.el.style.transition = '');
+      }
+      w.slotY = y;
+      y += w.h + GAP;
+    });
+    document.getElementById('addbtn').style.top = (172 + y + 12) + 'px';
+  }
+
+  function applyCfg(){
+    document.documentElement.style.setProperty('--liftScale', cfg.liftScale);
+    document.documentElement.style.setProperty('--liftDur', cfg.liftDur + 's');
+    document.documentElement.style.setProperty('--scrimOp', cfg.dim);
+    widgets.forEach(w => {
+      w.el.style.setProperty('--pA',  cfg.rot + 'deg');
+      w.el.style.setProperty('--nA', -cfg.rot + 'deg');
+      w.el.style.setProperty('--cycR', (cfg.cyc/2) + 's');
+      w.el.style.setProperty('--cycT', (cfg.cyc*cfg.cycMult/2) + 's');
+      w.el.style.setProperty('--pT',  cfg.amp + 'px');
+      w.el.style.setProperty('--nT', -cfg.amp + 'px');
+      w.el.style.setProperty('--pTy', (cfg.amp*0.7) + 'px');
+      w.el.style.setProperty('--nTy', -(cfg.amp*0.7) + 'px');
+      w.el.style.setProperty('--phR', (-Math.random()*cfg.cyc) + 's');
+      w.el.style.setProperty('--phT', (-Math.random()*cfg.cyc*cfg.cycMult) + 's');
+    });
+  }
+
+  function syncBadges(){
+    document.querySelectorAll('.badge').forEach(b => b.classList.toggle('show', mode === 'jiggle'));
+  }
+
+  function setMode(m){
+    mode = m;
+    phone.classList.toggle('mode-jiggle', m === 'jiggle');
+    document.getElementById('bar-default').classList.toggle('hidden', m === 'jiggle');
+    document.getElementById('pagedots').classList.toggle('hidden', m === 'jiggle');
+    document.getElementById('bar-customize').classList.toggle('hidden', m !== 'jiggle');
+    document.getElementById('btn-toggle').textContent = m === 'jiggle' ? 'Done (exit)' : 'Enter Jiggle';
+    if (m !== 'qa') closeMenu();
+    if (m === 'jiggle') applyCfg();
+    syncBadges();
+    setState(m === 'qa' ? 'quick action' : m);
+  }
+
+  /* ---------- quick action menu ---------- */
+  function openMenu(w){
+    qaTarget = w;
+    const menuH = 224;
+    let top = 172 + w.slotY + w.h + 10;
+    if (top + menuH > 780) top = 172 + w.slotY - menuH - 10;
+    qmenu.style.top = top + 'px';
+    qmenu.classList.add('show');
+    // dialog pop up background: full-screen scrim, only the pressed widget + menu float above
+    document.documentElement.style.setProperty('--scrimOp', cfg.dim);
+    document.getElementById('scrim').classList.add('show');
+    setState('quick action');
+  }
+  function closeMenu(){
+    qmenu.classList.remove('show');
+    document.getElementById('scrim').classList.remove('show');
+    if (qaTarget){ qaTarget.el.classList.remove('lift'); qaTarget = null; }
+  }
+  document.getElementById('qm-repos').addEventListener('click', () => { const t = qaTarget; closeMenu(); setMode('jiggle'); });
+  document.getElementById('qm-edit').addEventListener('click', () => { /* out of scope */ closeMenu(); setMode('default'); });
+  document.getElementById('qm-del').addEventListener('click', () => { const t = qaTarget; closeMenu(); if (t) removeWidget(t.id); setMode('default'); });
+  phone.addEventListener('pointerdown', e => {
+    if (mode === 'qa' && !qmenu.contains(e.target)){ closeMenu(); setMode('default'); }
+  }, true);
+
+  function removeWidget(id){
+    const w = widgets.find(x => x.id === id);
+    if (!w) return;
+    w.el.style.transform = 'scale(.6)'; w.el.style.opacity = '0';
+    setTimeout(() => { w.el.remove(); widgets = widgets.filter(x => x !== w); layout(false); }, 220);
+  }
+
+  /* ---------- press / hold / drag ---------- */
+  let t1 = null, t2 = null, startPt = null;
+
+  function onDown(e, id){
+    const w = widgets.find(x => x.id === id);
+    startPt = {x:e.clientX, y:e.clientY};
+
+    if (mode === 'default'){
+      w.el.classList.add('lift');           // lift immediately (as observed)
+      setState('pressing…');
+      t1 = setTimeout(() => {               // menu after holdMenu
+        mode = 'qa';
+        openMenu(w);
+        t2 = setTimeout(() => {             // keep holding -> jiggle
+          closeMenu();
+          setMode('jiggle');
+          pickUp(w, lastEv || e);
+        }, cfg.holdJiggle);
+      }, cfg.holdMenu);
+    } else if (mode === 'jiggle'){
+      t1 = setTimeout(() => pickUp(w, e), 120);
+    }
+
+    let lastEv = e;
+    const move = ev => {
+      lastEv = ev;
+      if (!held && Math.hypot(ev.clientX-startPt.x, ev.clientY-startPt.y) > 10){
+        clearTimeout(t1); clearTimeout(t2);
+        if (mode === 'default'){ w.el.classList.remove('lift'); setState('default'); }
+      }
+      if (held) onDrag(ev);
+    };
+    const up = () => {
+      clearTimeout(t1); clearTimeout(t2);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (held){ drop(); return; }
+      if (mode === 'qa'){ /* released during menu: menu stays, widget stays lifted */ return; }
+      if (mode === 'default'){ w.el.classList.remove('lift'); setState('default'); }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  function pickUp(w, e){
+    held = w;
+    phone.classList.add('holding-any');
+    w.el.classList.remove('lift');
+    w.el.classList.add('held');
+    w.el.querySelector('.rbox').style.transform = 'scale(' + cfg.liftScale + ')';
+    w.el.querySelector('.rbox').style.boxShadow = '0 18px 44px rgba(10,25,60,.38)';
+    setState('dragging');
+    if (e) onDrag(e);
+  }
+
+  function onDrag(e){
+    const rect = area.getBoundingClientRect();
+    const sf = rect.width / 414;
+    const py = (e.clientY - rect.top) / sf;
+    held.el.style.top = (py - held.h/2) + 'px';
+    const others = widgets.filter(x => x !== held);
+    let idx = 0, y = 0;
+    for (const o of others){
+      if (py > y + o.h/2 + GAP/2){ idx++; y += o.h + GAP; } else break;
+    }
+    const cur = widgets.indexOf(held);
+    if (cur !== idx){ widgets.splice(cur,1); widgets.splice(idx,0,held); layout(false); }
+  }
+
+  function drop(){
+    const w = held;
+    held = null;
+    phone.classList.remove('holding-any');
+    w.el.classList.remove('held');
+    const rb = w.el.querySelector('.rbox');
+    rb.style.transform = ''; rb.style.boxShadow = '';
+    layout(false);
+    setState(mode);
+  }
+
+  /* ---------- top bar ---------- */
+  document.getElementById('btn-edit').addEventListener('click', () => setMode('jiggle'));
+  document.getElementById('btn-done').addEventListener('click', () => setMode('default'));
+  document.getElementById('btn-add').addEventListener('click', () => alert('Add Widget flow (out of scope)'));
+  document.getElementById('addbtn').addEventListener('click', () => alert('Add Widget flow (out of scope)'));
+  document.getElementById('btn-toggle').addEventListener('click', () => setMode(mode === 'jiggle' ? 'default' : 'jiggle'));
+
+  /* ---------- panel ---------- */
+  const $ = id => document.getElementById(id);
+  function bind(id, key, fmt){
+    $(id).addEventListener('input', () => {
+      cfg[key] = parseFloat($(id).value);
+      $(id+'O').textContent = fmt(cfg[key]);
+      applyCfg();
+    });
+  }
+  bind('holdMenu','holdMenu', v=>(v/1000).toFixed(2)+' s');
+  bind('holdJiggle','holdJiggle', v=>'+'+(v/1000).toFixed(2)+' s');
+  bind('liftScale','liftScale', v=>v.toFixed(2)+'×');
+  bind('liftDur','liftDur', v=>v.toFixed(2)+' s');
+  bind('dim','dim', v=>Math.round(v*100)+'%');
+  bind('rot','rot', v=>'±'+v.toFixed(1)+'°');
+  bind('cyc','cyc', v=>v.toFixed(2)+' s');
+  bind('amp','amp', v=>'±'+v.toFixed(1)+' px');
+  bind('cycMult','cycMult', v=>v.toFixed(2)+'×');
+  $('reduceMotion').addEventListener('change', () => phone.classList.toggle('reduce-motion', $('reduceMotion').checked));
+  $('btn-reset').addEventListener('click', () => {
+    Object.assign(cfg, {holdMenu:500, holdJiggle:1200, liftScale:1.05, liftDur:0.15, dim:0.7, rot:0.7, cyc:0.25, amp:1.0, cycMult:1.4});
+    const map = {holdMenu:[500,'0.50 s'], holdJiggle:[1200,'+1.20 s'], liftScale:[1.05,'1.05×'], liftDur:[0.15,'0.15 s'],
+                 dim:[0.7,'70%'], rot:[0.7,'±0.7°'], cyc:[0.25,'0.25 s'], amp:[1,'±1.0 px'], cycMult:[1.4,'1.40×']};
+    for (const k in map){ $(k).value = map[k][0]; $(k+'O').textContent = map[k][1]; }
+    $('reduceMotion').checked = false; phone.classList.remove('reduce-motion');
+    applyCfg();
+  });
+
+  build();
+})();
+</script>
+</body>
+</html>
