@@ -147,7 +147,9 @@
   .row { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:10px; }
   .row:last-child { margin-bottom:0; }
   .row label { font-size:13.5px; white-space:nowrap; }
-  .row output { font-size:12.5px; color:#7fb0ff; min-width:62px; text-align:right; font-variant-numeric:tabular-nums; }
+  .row output { flex:0 0 78px; width:78px; text-align:left; font-size:12.5px; color:#7fb0ff;
+    background:#1d2130; border:1px solid #313850; border-radius:6px; padding:3px 7px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }
   input[type=range] { flex:1; accent-color:#4a8dff; }
   .toggle { display:flex; align-items:center; gap:8px; font-size:13.5px; cursor:pointer; }
   .btnrow { display:flex; gap:10px; margin-bottom:12px; }
