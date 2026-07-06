@@ -323,7 +323,7 @@
       w.slotY = y;
       y += w.h + GAP;
     });
-    document.getElementById('addbtn').style.top = (172 + y + 12) + 'px';
+    document.getElementById('addbtn').style.top = (172 + y - GAP + 16) + 'px'; // 16px below the last widget
   }
 
   function applyCfg(){
