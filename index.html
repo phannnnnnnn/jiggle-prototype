@@ -144,11 +144,12 @@
   .panel .sub { font-size:13px; color:#9aa2b5; margin-bottom:16px; }
   .group { background:#262a36; border-radius:14px; padding:14px 16px; margin-bottom:12px; }
   .group h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; color:#8f98ac; margin-bottom:10px; }
-  .row { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:10px; }
+  .row { display:flex; align-items:center; margin-bottom:8px; gap:12px; }
   .row:last-child { margin-bottom:0; }
-  .row label { font-size:13.5px; white-space:nowrap; }
-  .row output { flex:0 0 78px; width:78px; text-align:left; font-size:12.5px; color:#7fb0ff;
-    background:#1d2130; border:1px solid #313850; border-radius:6px; padding:3px 7px;
+  .row label { flex:0 0 150px; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .row input[type=range] { flex:1 1 auto; min-width:0; }
+  .row output { flex:0 0 76px; width:76px; text-align:center; font-size:12.5px; color:#7fb0ff;
+    background:#1d2130; border:1px solid #313850; border-radius:8px; padding:4px 6px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }
   input[type=range] { flex:1; accent-color:#4a8dff; }
   .toggle { display:flex; align-items:center; gap:8px; font-size:13.5px; cursor:pointer; }
