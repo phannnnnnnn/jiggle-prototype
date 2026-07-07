@@ -159,6 +159,13 @@
   .btn.primary { background:#1e5fd6; }
   .note { font-size:12px; color:#8f98ac; line-height:1.55; }
   .note b { color:#c3cad9; }
+
+  /* ---------- mobile ---------- */
+  @media (max-width: 899px){
+    body { flex-direction:column; align-items:center; gap:24px; padding:20px 12px; }
+    .phone { transform-origin:top center; }
+    .panel { width:100%; max-width:430px; }
+  }
 </style>
 </head>
 <body>
@@ -511,7 +518,22 @@
     applyCfg();
   });
 
+  /* ---------- mobile fit: scale the phone to the viewport ---------- */
+  function fitPhone(){
+    if (window.innerWidth < 900){
+      const s = Math.min((window.innerWidth - 36) / 414, 1);
+      phone.style.transform = 'scale(' + s + ')';
+      phone.style.marginBottom = (-896 * (1 - s)) + 'px';
+    } else {
+      phone.style.transform = '';
+      phone.style.marginBottom = '';
+    }
+  }
+  window.addEventListener('resize', fitPhone);
+  phone.addEventListener('contextmenu', e => e.preventDefault()); // stop long-press menu on mobile
+
   build();
+  fitPhone();
 })();
 </script>
 </body>
